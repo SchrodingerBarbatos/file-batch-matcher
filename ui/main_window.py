@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QCheckBox, QTextEdit, QFileDialog, QMessageBox,
     QFrame, QGraphicsDropShadowEffect, QSizePolicy, QGridLayout, QListView,
+    QScrollArea,
 )
 from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QTextCursor, QTextCharFormat, QColor, QFont, QIcon
@@ -26,7 +27,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("文件批量匹配复制工具")
-        self.resize(900, 700)
+        self.resize(1000, 750)
         self._colors = get_theme_colors()
 
         self.stop_event = threading.Event()
@@ -84,20 +85,39 @@ class MainWindow(QMainWindow):
     def _setup_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        ui_gap = 14
-        main_layout = QVBoxLayout(central_widget)
+        ui_gap = 16
+        main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(ui_gap, ui_gap, ui_gap, ui_gap)
         main_layout.setSpacing(ui_gap)
 
-        # ---- 上部：路径设置 + 匹配选项 ----
-        top_layout = QHBoxLayout()
-        top_layout.setSpacing(ui_gap)
+        # ---- 左侧滚动区域 ----
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll.setMinimumWidth(350)
 
-        # 左侧：路径与文件设置
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(ui_gap)
+
+        # ---- 右侧固定区域 ----
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(ui_gap)
+
+        # 将左右区域添加到主布局
+        main_layout.addWidget(left_scroll, 40)
+        main_layout.addWidget(right_widget, 60)
+
+        # 设置左侧滚动区域的内容
+        left_scroll.setWidget(left_widget)
+
+        # ========== 左侧：路径与文件设置 ==========
         path_group = QFrame()
         path_group.setObjectName("CardFrame")
         path_group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        path_group.setMinimumWidth(460)
         path_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._add_shadow(path_group)
         path_layout = QGridLayout(path_group)
@@ -163,13 +183,12 @@ class MainWindow(QMainWindow):
         path_hint = self._hint_label("Excel 中编号按字符串读取，自动去重；支持 .xlsx 和 .xls 格式")
         path_hint.setContentsMargins(0, 2, 0, 0)
         path_layout.addWidget(path_hint, 5, 1, 1, 2, Qt.AlignmentFlag.AlignTop)
-        top_layout.addWidget(path_group, 2)
+        left_layout.addWidget(path_group)
 
-        # 右侧：匹配选项
+        # ========== 左侧：匹配选项 ==========
         opt_group = QFrame()
         opt_group.setObjectName("CardFrame")
         opt_group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        opt_group.setMinimumWidth(300)
         opt_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self._add_shadow(opt_group)
         opt_layout = QGridLayout(opt_group)
@@ -211,10 +230,9 @@ class MainWindow(QMainWindow):
         self.chk_overwrite = QCheckBox("目标存在时覆盖")
         opt_layout.addWidget(self.chk_overwrite, 5, 0, 1, 2)
 
-        top_layout.addWidget(opt_group, 1)
-        main_layout.addLayout(top_layout)
+        left_layout.addWidget(opt_group)
 
-        # ---- 中部：图片处理选项 ----
+        # ========== 左侧：图片处理选项 ==========
         img_group = QFrame()
         img_group.setObjectName("CardFrame")
         img_group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -264,16 +282,12 @@ class MainWindow(QMainWindow):
         self._toggle_resize_fields(False)
         self._toggle_convert_fields(False)
 
-        main_layout.addWidget(img_group)
+        left_layout.addWidget(img_group)
 
-        # ---- 操作按钮 + 日志 ----
-        middle_layout = QHBoxLayout()
-        middle_layout.setSpacing(ui_gap)
+        # 左侧底部弹性空间
+        left_layout.addStretch()
 
-        # 左侧：按钮 + 进度
-        right_btn_layout = QVBoxLayout()
-        right_btn_layout.setSpacing(12)
-
+        # ========== 右侧：操作按钮 + 进度 + 统计 ==========
         btn_row = QHBoxLayout()
         btn_row.setSpacing(12)
         self.btn_start = QPushButton("开始匹配并复制")
@@ -285,14 +299,14 @@ class MainWindow(QMainWindow):
         self.btn_stop.clicked.connect(self.stop_process)
         btn_row.addWidget(self.btn_start)
         btn_row.addWidget(self.btn_stop)
-        right_btn_layout.addLayout(btn_row)
+        right_layout.addLayout(btn_row)
 
         # 进度条
         self.progress_bar = AnimatedProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
-        right_btn_layout.addWidget(self.progress_bar)
+        right_layout.addWidget(self.progress_bar)
 
         # 统计信息
         stats_layout = QHBoxLayout()
@@ -308,7 +322,7 @@ class MainWindow(QMainWindow):
         stats_layout.addWidget(self.lbl_success)
         stats_layout.addWidget(self.lbl_failed)
         stats_layout.addWidget(self.lbl_skipped)
-        right_btn_layout.addLayout(stats_layout)
+        right_layout.addLayout(stats_layout)
 
         # 底部操作按钮
         bottom_row = QHBoxLayout()
@@ -322,9 +336,9 @@ class MainWindow(QMainWindow):
         bottom_row.addWidget(self.btn_save_unmatched)
         bottom_row.addWidget(self.btn_clear_log)
         bottom_row.addStretch()
-        right_btn_layout.addLayout(bottom_row)
+        right_layout.addLayout(bottom_row)
 
-        # 右侧：日志
+        # ========== 右侧：日志 ==========
         log_group = QFrame()
         log_group.setObjectName("CardFrame")
         log_group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -339,9 +353,7 @@ class MainWindow(QMainWindow):
         self.text_log.document().setMaximumBlockCount(LOG_MAX_BLOCK_COUNT)
         log_layout.addWidget(self.text_log, 1)
 
-        middle_layout.addLayout(right_btn_layout, 2)
-        middle_layout.addWidget(log_group, 5)
-        main_layout.addLayout(middle_layout, 1)
+        right_layout.addWidget(log_group, 1)
 
         self._apply_app_style()
 
