@@ -86,7 +86,7 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
         QFrame#CardFrame {{
             background: {c['card']};
             border: 1px solid {c['border']};
-            border-radius: 8px;
+            border-radius: 10px;
         }}
         QLabel {{
             color: {c['text']};
@@ -182,10 +182,10 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             background: {c['card2']};
             color: {c['text']};
             border: 2px solid {c['border']};
-            border-radius: 7px;
-            min-height: 34px;
-            max-height: 34px;
-            padding: 0px 11px;
+            border-radius: 8px;
+            min-height: 36px;
+            max-height: 36px;
+            padding: 0px 12px;
         }}
         QPushButton:hover {{
             border-color: {c['accent']};
