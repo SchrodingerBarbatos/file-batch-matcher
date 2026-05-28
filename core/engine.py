@@ -169,33 +169,36 @@ class FileMatcherEngine:
 
             for num in ids:
                 if filename.startswith(num):
-                    matched[num].append(os.path.join(root, filename))
-                    break
+                    # 确保编号后紧跟分隔符或文件结尾，避免误匹配
+                    # 如 "123" 不应匹配 "12345_photo.jpg"
+                    if len(filename) == len(num) or not filename[len(num)].isalnum():
+                        matched[num].append(os.path.join(root, filename))
+                        break
 
         return matched
 
     # ---- 图片处理 ----
 
     def process_image(self, image_path, max_w=800, max_h=800, max_size=5000000):
-        """安全处理图片：调整尺寸、压缩大小。"""
+        """安全处理图片：调整尺寸（保持宽高比）、压缩大小。"""
         tmp_path = None
         try:
             if max_w <= 0 or max_h <= 0 or max_size <= 0:
                 raise ValueError("宽、高、最大大小必须大于 0")
 
-            original_size = os.path.getsize(image_path)
             ext = os.path.splitext(image_path)[1].lower()
+            original_size = os.path.getsize(image_path)
 
             with Image.open(image_path) as img:
-                dimension_ok = (img.width == max_w and img.height == max_h)
+                # 使用 thumbnail 保持宽高比缩放
+                img.thumbnail((max_w, max_h), Image.LANCZOS)
+
+                dimension_ok = (img.width <= max_w and img.height <= max_h)
                 size_ok = original_size <= max_size
 
                 if dimension_ok and size_ok:
                     self.log(f"[图片跳过] 已符合要求: {os.path.basename(image_path)}")
                     return True
-
-                img = img.copy()
-                img = img.resize((max_w, max_h), Image.LANCZOS)
 
                 if ext in ['.jpg', '.jpeg'] and img.mode in ('RGBA', 'LA', 'P'):
                     background = Image.new('RGB', img.size, (255, 255, 255))
@@ -206,7 +209,7 @@ class FileMatcherEngine:
                 elif ext in ['.jpg', '.jpeg'] and img.mode != 'RGB':
                     img = img.convert('RGB')
 
-                tmp_path = image_path + ".tmp" + ext
+                tmp_path = image_path + ".tmp"
 
                 if ext == '.png':
                     img.save(tmp_path, optimize=True)
@@ -254,14 +257,26 @@ class FileMatcherEngine:
             with Image.open(image_path) as img:
                 real_format = img.format
 
-                if real_format in ['JPEG', 'PNG']:
-                    self.log(f"[格式跳过] 已是标准格式: {os.path.basename(image_path)} ({real_format})")
+                # jpg/jpeg/png 已是常见格式，跳过转换
+                if real_format in ('JPEG', 'PNG'):
+                    self.log(f"[格式跳过] 已是常见格式: {os.path.basename(image_path)} ({real_format})")
                     return image_path
 
                 base_name = os.path.splitext(image_path)[0]
 
+                # 确定目标扩展名
                 if target_format == 'JPEG':
                     new_ext = '.jpg'
+                elif target_format == 'PNG':
+                    new_ext = '.png'
+                else:
+                    self.log(f"[格式跳过] 不支持的目标格式: {target_format}")
+                    return image_path
+
+                new_path = base_name + new_ext
+
+                # 转换为 JPEG 时处理透明度
+                if target_format == 'JPEG':
                     if img.mode in ('RGBA', 'LA', 'P'):
                         background = Image.new('RGB', img.size, (255, 255, 255))
                         if img.mode == 'P':
@@ -270,16 +285,14 @@ class FileMatcherEngine:
                         img = background
                     elif img.mode != 'RGB':
                         img = img.convert('RGB')
-                else:
-                    new_ext = '.png'
 
-                new_path = base_name + new_ext
-                tmp_path = new_path + ".tmp" + new_ext
+                tmp_path = new_path + ".tmp"
 
+                # 保存为目标格式
                 if target_format == 'JPEG':
-                    img.save(tmp_path, quality=95, optimize=True)
-                else:
-                    img.save(tmp_path, optimize=True)
+                    img.save(tmp_path, 'JPEG', quality=95, optimize=True)
+                elif target_format == 'PNG':
+                    img.save(tmp_path, 'PNG', optimize=True)
 
                 if os.path.getsize(tmp_path) > 0:
                     os.replace(tmp_path, new_path)
@@ -310,6 +323,13 @@ class FileMatcherEngine:
         主处理流程：读取 Excel -> 匹配文件 -> 复制/移动 -> 格式转换 -> 图片处理。
         返回 (success, skipped, errors, unmatched_ids)。
         """
+        # 防止源目录和目标目录相同导致数据丢失
+        if os.path.abspath(src_dir) == os.path.abspath(dst_dir):
+            if move_mode:
+                self.log("[错误] 源文件夹与目标文件夹相同，移动模式会删除源文件，已取消操作。")
+                return 0, 0, 0, []
+            self.log("[警告] 源文件夹与目标文件夹相同，文件不会被复制。")
+
         self.log("正在读取 Excel 编号...")
         ids = self.read_excel_ids(excel_path, column, display_to_name)
         if self.stop_event.is_set():

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """QThread 工作线程"""
 
+import traceback
+
 from PySide6.QtCore import QThread, Signal
 
 
@@ -20,7 +22,6 @@ class WorkerThread(QThread):
             self.result = self.engine.run(**self.kwargs)
         except Exception as e:
             self.log_signal.emit(f"\n[错误] {e}")
-            import traceback
             self.log_signal.emit(traceback.format_exc())
         finally:
             self.finished_signal.emit()
