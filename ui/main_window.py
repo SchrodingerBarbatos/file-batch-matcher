@@ -490,7 +490,7 @@ class MainWindow(QMainWindow):
         pi_layout.addStretch()
 
         # 初始化禁用状态
-        self._toggle_resize_fields(False)
+        self._toggle_resize_fields(self.chk_resize.isChecked())
 
         self._adv_stack.addWidget(page_img)
 
