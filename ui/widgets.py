@@ -60,14 +60,10 @@ class RoundComboBox(QComboBox):
                 container = view.parentWidget()
                 if container:
                     container.setObjectName("comboPopupContainer")
-                    container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
                     container.setWindowFlags(
                         Qt.WindowType.Popup
                         | Qt.WindowType.FramelessWindowHint
                         | Qt.WindowType.NoDropShadowWindowHint
-                    )
-                    container.setStyleSheet(
-                        "#comboPopupContainer { background: transparent; border: none; }"
                     )
             self._popup_chrome_applied = True
         super().showPopup()

@@ -246,6 +246,10 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             padding: 2px 8px;
             border-radius: {R['sm']}px;
         }}
+        QListView#roundComboView::item:hover {{
+            background: {c['card2']};
+            color: {c['text']};
+        }}
         QListView#roundComboView::item:selected {{
             background: {c['accent']};
             color: #FFFFFF;
@@ -487,9 +491,9 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             border-radius: 10px;
         }}
         QTextEdit#logTextEdit {{
-            background: transparent;
-            border: none;
-            border-radius: 10px;
+            background: {c['log']};
+            border: 1px solid {c['border']};
+            border-radius: 8px;
             padding: 10px;
             font-family: Consolas, "Courier New", monospace;
             font-size: 12px;

@@ -641,11 +641,18 @@ class MainWindow(QMainWindow):
         self._log_content_frame.setObjectName("logContentFrame")
         self._log_content_frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         log_content_layout = QVBoxLayout(self._log_content_frame)
-        log_content_layout.setContentsMargins(0, 0, 0, 0)
+        log_content_layout.setContentsMargins(8, 8, 8, 8)
         log_content_layout.setSpacing(0)
 
-        # 空状态提示（位于日志区约 35% 高度处）
-        log_content_layout.addStretch(35)
+        # 使用 QStackedLayout 管理空状态和日志内容
+        self._log_stack = QStackedLayout()
+
+        # 空状态页面
+        empty_page = QWidget()
+        empty_page_layout = QVBoxLayout(empty_page)
+        empty_page_layout.setContentsMargins(0, 0, 0, 0)
+        empty_page_layout.setSpacing(0)
+        empty_page_layout.addStretch(35)
         self._log_empty_state = QLabel(
             "暂无日志\n开始匹配后将显示文件扫描、匹配结果和错误信息"
         )
@@ -654,19 +661,21 @@ class MainWindow(QMainWindow):
             f"font-size: 13px; color: {self._colors['muted']}; background: transparent; "
             f"padding: 0px 20px 0px 20px;"
         )
-        log_content_layout.addWidget(self._log_empty_state)
-        log_content_layout.addStretch(65)
+        empty_page_layout.addWidget(self._log_empty_state)
+        empty_page_layout.addStretch(65)
+        self._log_stack.addWidget(empty_page)
 
-        # 日志文本区（初始隐藏）
+        # 日志文本区页面
         self.text_log = QTextEdit()
         self.text_log.setObjectName("logTextEdit")
         self.text_log.setReadOnly(True)
         self.text_log.document().setMaximumBlockCount(LOG_MAX_BLOCK_COUNT)
-        self.text_log.setVisible(False)
-        log_content_layout.addWidget(self.text_log, 1)  # stretch=1 让日志区占满可用空间
+        self._log_stack.addWidget(self.text_log)
 
-        # 保存布局引用，以便切换时调整拉伸因子
-        self._log_content_layout = log_content_layout
+        # 初始显示空状态
+        self._log_stack.setCurrentIndex(0)
+
+        log_content_layout.addLayout(self._log_stack)
 
         log_layout.addWidget(self._log_content_frame, 1)
 
@@ -824,32 +833,13 @@ class MainWindow(QMainWindow):
         """线程安全的日志回调，通过 QTimer 在主线程中更新 UI。"""
         QTimer.singleShot(0, self, lambda: self.append_log(message))
 
-    def _set_log_stretch_enabled(self, enabled):
-        """启用或禁用空状态的拉伸因子。"""
-        layout = self._log_content_layout
-        for i in range(layout.count()):
-            item = layout.itemAt(i)
-            if item and item.spacerItem():
-                if enabled:
-                    item.changeSize(0, 0, QSizePolicy.Policy.Expanding)
-                else:
-                    item.changeSize(0, 0)
-        layout.invalidate()  # 强制重新布局
-
     def _show_log_content(self):
-        """切换到日志内容模式（隐藏空状态）。"""
-        if not self.text_log.isVisible():
-            self._log_empty_state.setVisible(False)
-            # 禁用空状态的拉伸因子，让日志内容占据全部空间
-            self._set_log_stretch_enabled(False)
-            self.text_log.setVisible(True)
+        """切换到日志内容模式。"""
+        self._log_stack.setCurrentIndex(1)
 
     def _show_log_empty_state(self):
-        """切换到空状态模式（隐藏日志内容）。"""
-        self.text_log.setVisible(False)
-        # 恢复空状态的拉伸因子
-        self._log_empty_state.setVisible(True)
-        self._set_log_stretch_enabled(True)
+        """切换到空状态模式。"""
+        self._log_stack.setCurrentIndex(0)
 
     def _get_log_dot_color(self, text):
         """根据日志类型返回圆点颜色。"""
