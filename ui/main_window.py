@@ -393,6 +393,32 @@ class MainWindow(QMainWindow):
         self.cb_move.setFixedHeight(H_INPUT)
         self.cb_move.setToolTip("复制更安全，移动更省空间")
         pp_layout.addWidget(self.cb_move)
+
+        # 输出压缩包选项
+        zip_row = QHBoxLayout()
+        zip_row.setContentsMargins(0, 0, 0, 0)
+        zip_row.setSpacing(8)
+
+        self.chk_zip = QCheckBox("输出压缩包")
+        self.chk_zip.setChecked(True)
+        self.chk_zip.toggled.connect(self._toggle_zip_fields)
+        zip_row.addWidget(self.chk_zip)
+
+        zip_size_label = QLabel("单个大小(MB)")
+        zip_size_label.setStyleSheet(
+            f"font-size: 12px; color: {self._colors['muted']}; background: transparent;"
+        )
+        zip_row.addWidget(zip_size_label)
+
+        self.le_zip_size = QLineEdit("100")
+        self.le_zip_size.setObjectName("advancedInput")
+        self.le_zip_size.setFixedHeight(H_INPUT)
+        self.le_zip_size.setMaximumWidth(80)
+        self.le_zip_size.setToolTip("单个压缩包的最大大小，超过时自动分卷")
+        zip_row.addWidget(self.le_zip_size)
+        zip_row.addStretch()
+
+        pp_layout.addLayout(zip_row)
         pp_layout.addStretch()
 
         self._adv_stack.addWidget(page_process)
@@ -715,6 +741,9 @@ class MainWindow(QMainWindow):
         self.le_max_size.setEnabled(checked)
         self.cb_format.setEnabled(checked)
 
+    def _toggle_zip_fields(self, checked):
+        self.le_zip_size.setEnabled(checked)
+
     def _switch_adv_tab(self, name):
         tab_map = {"文件过滤": 0, "文件处理": 1, "图片处理": 2}
         idx = tab_map.get(name, 0)
@@ -1028,9 +1057,10 @@ class MainWindow(QMainWindow):
             max_width = int(self.le_width.text() or 800)
             max_height = int(self.le_height.text() or 800)
             max_size_kb = int(self.le_max_size.text() or 5000)
-            max_size = max_size_kb * 1024  # KB 转 bytes
+            max_size = max_size_kb * 1000  # KB 转 bytes
+            zip_max_size_mb = int(self.le_zip_size.text() or 100)
         except ValueError:
-            QMessageBox.warning(self, "输入错误", "宽度、高度和文件大小必须是整数。")
+            QMessageBox.warning(self, "输入错误", "宽度、高度、文件大小和压缩包大小必须是整数。")
             self._restore_controls_after_error()
             return
 
@@ -1049,6 +1079,8 @@ class MainWindow(QMainWindow):
             'max_size': max_size,
             'enable_convert': self.cb_format.currentIndex() > 0,
             'target_format': self.cb_format.currentText(),
+            'enable_zip': self.chk_zip.isChecked(),
+            'zip_max_size': zip_max_size_mb * 1000 * 1000,  # MB 转 bytes
             'display_to_name': self.column_display_to_name,
         }
 
@@ -1080,7 +1112,7 @@ class MainWindow(QMainWindow):
             self.cb_move, self.chk_no_ext, self.chk_recursive,
             self.chk_overwrite, self.chk_resize,
             self.le_width, self.le_height, self.le_max_size, self.cb_format,
-            self.chk_skip_exist,
+            self.chk_skip_exist, self.chk_zip, self.le_zip_size,
         ]
         # 扩展名复选框
         for cb in self._ext_checkboxes.values():
@@ -1092,6 +1124,7 @@ class MainWindow(QMainWindow):
         if enabled:
             self._toggle_resize_fields(self.chk_resize.isChecked())
             self._toggle_ext_checkboxes(self.chk_no_ext.isChecked())
+            self._toggle_zip_fields(self.chk_zip.isChecked())
 
     def _update_progress(self, percent):
         """更新进度条和百分比标签。"""

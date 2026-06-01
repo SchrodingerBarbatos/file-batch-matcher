@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import threading
+import zipfile
 from collections import defaultdict
 
 import pandas as pd
@@ -319,15 +320,51 @@ class FileMatcherEngine:
             self.log(f"[错误] 格式转换失败 {os.path.basename(image_path)}: {e}")
             return image_path
 
+    # ---- 压缩打包 ----
+
+    def create_zip_archives(self, dst_dir, max_zip_size):
+        """将目标文件夹打包为 zip，超过大小限制时自动分卷。"""
+        files = [f for f in os.listdir(dst_dir) if os.path.isfile(os.path.join(dst_dir, f))]
+        if not files:
+            self.log("[压缩] 没有文件需要打包")
+            return
+
+        archive_dir = dst_dir + "_压缩包"
+        os.makedirs(archive_dir, exist_ok=True)
+
+        zip_index = 1
+        zip_path = os.path.join(archive_dir, f"output_{zip_index}.zip")
+        current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
+        current_size = 0
+
+        for filename in sorted(files):
+            filepath = os.path.join(dst_dir, filename)
+            file_size = os.path.getsize(filepath)
+            if current_size > 0 and current_size + file_size > max_zip_size:
+                current_zip.close()
+                self.log(f"[压缩] 已生成: {os.path.basename(zip_path)}")
+                zip_index += 1
+                zip_path = os.path.join(archive_dir, f"output_{zip_index}.zip")
+                current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
+                current_size = 0
+
+            current_zip.write(filepath, filename)
+            current_size += file_size
+
+        current_zip.close()
+        self.log(f"[压缩] 已生成: {os.path.basename(zip_path)}")
+        self.log(f"[压缩] 共生成 {zip_index} 个压缩包，保存在: {archive_dir}")
+
     # ---- 主处理流程 ----
 
     def run(self, excel_path, column, src_dir, dst_dir, extensions,
             recursive=False, move_mode=False, overwrite=False,
             enable_resize=False, max_width=800, max_height=800, max_size=5000000,
             enable_convert=False, target_format="JPEG",
+            enable_zip=False, zip_max_size=100 * 1000 * 1000,
             display_to_name=None):
         """
-        主处理流程：读取 Excel -> 匹配文件 -> 复制/移动 -> 格式转换 -> 图片处理。
+        主处理流程：读取 Excel -> 匹配文件 -> 复制/移动 -> 格式转换 -> 图片处理 -> 压缩打包。
         返回 (success, skipped, errors, unmatched_ids)。
         """
         # 防止源目录和目标目录相同导致数据丢失
@@ -434,6 +471,11 @@ class FileMatcherEngine:
 
                 processed += 1
                 self._update_progress(processed, total_files)
+
+        # 压缩打包
+        if enable_zip and not self.stop_event.is_set() and (success > 0 or skipped > 0):
+            self.log("正在压缩打包...")
+            self.create_zip_archives(dst_dir, zip_max_size)
 
         self.log(f"操作完成：成功 {success}，跳过 {skipped}，错误 {errors}")
         return success, skipped, errors, unmatched
