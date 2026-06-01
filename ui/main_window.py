@@ -313,6 +313,7 @@ class MainWindow(QMainWindow):
 
         # -- 文件过滤 --
         page_filter = QWidget()
+        page_filter.setStyleSheet("background: transparent;")
         pf_layout = QVBoxLayout(page_filter)
         pf_layout.setContentsMargins(0, 4, 0, 0)
         pf_layout.setSpacing(14)
@@ -353,6 +354,7 @@ class MainWindow(QMainWindow):
 
         # -- 文件处理 --
         page_process = QWidget()
+        page_process.setStyleSheet("background: transparent;")
         pp_layout = QVBoxLayout(page_process)
         pp_layout.setContentsMargins(0, 4, 0, 0)
         pp_layout.setSpacing(14)
@@ -400,7 +402,7 @@ class MainWindow(QMainWindow):
         zip_row.setSpacing(8)
 
         self.chk_zip = QCheckBox("输出压缩包")
-        self.chk_zip.setChecked(True)
+        self.chk_zip.setChecked(False)
         self.chk_zip.toggled.connect(self._toggle_zip_fields)
         zip_row.addWidget(self.chk_zip)
 
@@ -425,6 +427,7 @@ class MainWindow(QMainWindow):
 
         # -- 图片处理 --
         page_img = QWidget()
+        page_img.setStyleSheet("background: transparent;")
         pi_layout = QVBoxLayout(page_img)
         pi_layout.setContentsMargins(0, 4, 0, 0)
         pi_layout.setSpacing(14)
@@ -659,7 +662,7 @@ class MainWindow(QMainWindow):
         self.text_log.setReadOnly(True)
         self.text_log.document().setMaximumBlockCount(LOG_MAX_BLOCK_COUNT)
         self.text_log.setVisible(False)
-        log_content_layout.addWidget(self.text_log)
+        log_content_layout.addWidget(self.text_log, 1)  # stretch=1 让日志区占满可用空间
 
         # 保存布局引用，以便切换时调整拉伸因子
         self._log_content_layout = log_content_layout
@@ -944,7 +947,7 @@ class MainWindow(QMainWindow):
         if m:
             self.stat_unmatched.set_count(int(m.group(1)))
 
-        m = re.search(r'成功[:：]\s*(\d+)', text)
+        m = re.search(r'操作完成[：:]\s*成功\s+(\d+)', text)
         if m:
             self.stat_copied.set_count(int(m.group(1)))
 
@@ -1057,7 +1060,7 @@ class MainWindow(QMainWindow):
             max_width = int(self.le_width.text() or 800)
             max_height = int(self.le_height.text() or 800)
             max_size_kb = int(self.le_max_size.text() or 5000)
-            max_size = max_size_kb * 1000  # KB 转 bytes
+            max_size = max_size_kb * 1000  # KB 转 bytes (SI 单位，1KB = 1000 bytes)
             zip_max_size_mb = int(self.le_zip_size.text() or 100)
         except ValueError:
             QMessageBox.warning(self, "输入错误", "宽度、高度、文件大小和压缩包大小必须是整数。")
@@ -1080,7 +1083,7 @@ class MainWindow(QMainWindow):
             'enable_convert': self.cb_format.currentIndex() > 0,
             'target_format': self.cb_format.currentText(),
             'enable_zip': self.chk_zip.isChecked(),
-            'zip_max_size': zip_max_size_mb * 1000 * 1000,  # MB 转 bytes
+            'zip_max_size': zip_max_size_mb * 1000 * 1000,  # MB 转 bytes (SI 单位，1MB = 1,000,000 bytes)
             'display_to_name': self.column_display_to_name,
         }
 

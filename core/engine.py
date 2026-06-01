@@ -335,23 +335,48 @@ class FileMatcherEngine:
         zip_index = 1
         zip_path = os.path.join(archive_dir, f"output_{zip_index}.zip")
         current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
-        current_size = 0
+        total = len(files)
 
-        for filename in sorted(files):
-            filepath = os.path.join(dst_dir, filename)
-            file_size = os.path.getsize(filepath)
-            if current_size > 0 and current_size + file_size > max_zip_size:
-                current_zip.close()
-                self.log(f"[压缩] 已生成: {os.path.basename(zip_path)}")
-                zip_index += 1
-                zip_path = os.path.join(archive_dir, f"output_{zip_index}.zip")
-                current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
-                current_size = 0
+        aborted = False
+        try:
+            for i, filename in enumerate(sorted(files)):
+                if self.stop_event.is_set():
+                    aborted = True
+                    self.log("[压缩] 用户中止，正在清理...")
+                    break
 
-            current_zip.write(filepath, filename)
-            current_size += file_size
+                filepath = os.path.join(dst_dir, filename)
+                file_size = os.path.getsize(filepath)
 
-        current_zip.close()
+                # 单个文件超过大小限制时输出警告
+                if file_size > max_zip_size:
+                    self.log(f"[压缩] 警告: {filename} ({file_size / 1000000:.1f}MB) 超过单包限制，压缩包大小将超出预期")
+
+                # 基于 zip 文件实际已写入大小判断是否需要分卷
+                actual_size = os.path.getsize(zip_path) if os.path.exists(zip_path) else 0
+                if actual_size > 0 and actual_size + file_size > max_zip_size:
+                    current_zip.close()
+                    self.log(f"[压缩] 已生成: {os.path.basename(zip_path)}")
+                    zip_index += 1
+                    zip_path = os.path.join(archive_dir, f"output_{zip_index}.zip")
+                    current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
+
+                current_zip.write(filepath, filename)
+
+                # 每 50 个文件输出一次进度
+                if (i + 1) % 50 == 0 or i + 1 == total:
+                    self.log(f"[压缩] 进度: {i + 1}/{total}")
+        finally:
+            current_zip.close()
+            if aborted:
+                # 删除当前未完成的压缩包
+                try:
+                    os.remove(zip_path)
+                except OSError:
+                    pass
+                self.log("[压缩] 已停止打包，已清理未完成的压缩包")
+                return
+
         self.log(f"[压缩] 已生成: {os.path.basename(zip_path)}")
         self.log(f"[压缩] 共生成 {zip_index} 个压缩包，保存在: {archive_dir}")
 
