@@ -212,7 +212,7 @@ class FileMatcherEngine:
                 tmp_path = image_path + ".tmp"
 
                 if ext == '.png':
-                    img.save(tmp_path, optimize=True)
+                    img.save(tmp_path, format='PNG', optimize=True)
                     if os.path.getsize(tmp_path) > 0:
                         os.replace(tmp_path, image_path)
                     else:
@@ -223,11 +223,12 @@ class FileMatcherEngine:
                 quality = 95
                 while quality >= 20:
                     if ext in ['.jpg', '.jpeg']:
-                        img.save(tmp_path, quality=quality, optimize=True)
+                        img.save(tmp_path, format='JPEG', quality=quality, optimize=True)
                     elif ext == '.webp':
-                        img.save(tmp_path, quality=quality, method=6)
+                        img.save(tmp_path, format='WEBP', quality=quality, method=6)
                     else:
-                        img.save(tmp_path)
+                        img.save(tmp_path, format=img.format or 'PNG')
+                        break  # 无损格式不支持 quality 压缩，无需循环
 
                     if os.path.getsize(tmp_path) <= max_size:
                         break
@@ -290,9 +291,9 @@ class FileMatcherEngine:
 
                 # 保存为目标格式
                 if target_format == 'JPEG':
-                    img.save(tmp_path, 'JPEG', quality=95, optimize=True)
+                    img.save(tmp_path, format='JPEG', quality=95, optimize=True)
                 elif target_format == 'PNG':
-                    img.save(tmp_path, 'PNG', optimize=True)
+                    img.save(tmp_path, format='PNG', optimize=True)
 
                 if os.path.getsize(tmp_path) > 0:
                     os.replace(tmp_path, new_path)
