@@ -404,6 +404,7 @@ class MainWindow(QMainWindow):
         pi_layout.setSpacing(14)
 
         self.chk_resize = QCheckBox("启用图片尺寸大小处理")
+        self.chk_resize.setChecked(True)  # 默认启用
         self.chk_resize.toggled.connect(self._toggle_resize_fields)
         pi_layout.addWidget(self.chk_resize)
 
@@ -464,9 +465,9 @@ class MainWindow(QMainWindow):
         s_row = QHBoxLayout()
         s_row.setSpacing(6)
         s_row.setContentsMargins(0, 0, 0, 0)
-        self.le_max_size = QLineEdit("500")
+        self.le_max_size = QLineEdit("5120")
         self.le_max_size.setObjectName("advancedInput")
-        self.le_max_size.setPlaceholderText("500")
+        self.le_max_size.setPlaceholderText("5120")
         self.le_max_size.setFixedWidth(160)
         self.le_max_size.setFixedHeight(H_INPUT)
         s_row.addWidget(self.le_max_size)
@@ -1026,7 +1027,7 @@ class MainWindow(QMainWindow):
         try:
             max_width = int(self.le_width.text() or 800)
             max_height = int(self.le_height.text() or 800)
-            max_size_kb = int(self.le_max_size.text() or 500)
+            max_size_kb = int(self.le_max_size.text() or 5120)
             max_size = max_size_kb * 1024  # KB 转 bytes
         except ValueError:
             QMessageBox.warning(self, "输入错误", "宽度、高度和文件大小必须是整数。")
