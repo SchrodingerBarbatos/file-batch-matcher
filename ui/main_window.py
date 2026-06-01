@@ -402,7 +402,7 @@ class MainWindow(QMainWindow):
         zip_row.setSpacing(8)
 
         self.chk_zip = QCheckBox("输出压缩包")
-        self.chk_zip.setChecked(False)
+        self.chk_zip.setChecked(True)
         self.chk_zip.toggled.connect(self._toggle_zip_fields)
         zip_row.addWidget(self.chk_zip)
 
