@@ -28,7 +28,7 @@ from core.engine import FileMatcherEngine
 from ui.widgets import (
     DragLineEdit, RoundComboBox, AnimatedProgressBar,
     StepRow, CollapsibleSection, StatCard, CurrentFileBar,
-    AdvancedOptionsCard, TabButton, OptionCard, LogListWidget,
+    AdvancedOptionsCard, TabButton, OptionCard,
 )
 from ui.workers import WorkerThread
 from ui.styles import get_theme_colors, build_stylesheet
@@ -108,7 +108,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(sub)
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background: #EEF2F7; max-height: 1px; border: none;")
+        sep.setStyleSheet(f"background: {self._colors['border']}; max-height: 1px; border: none;")
         layout.addWidget(sep)
         return container
 
@@ -339,7 +339,7 @@ class MainWindow(QMainWindow):
         pf_layout.addWidget(custom_label)
         custom_desc = QLabel("支持输入 psd、ai、pdf 等，用逗号分隔")
         custom_desc.setStyleSheet(
-            "font-size: 11px; color: #9CA3AF; background: transparent;"
+            f"font-size: 11px; color: {self._colors['muted']}; background: transparent;"
         )
         pf_layout.addWidget(custom_desc)
         self._le_custom_ext = QLineEdit()
@@ -602,7 +602,7 @@ class MainWindow(QMainWindow):
         # 标题下方分割线
         log_sep = QFrame()
         log_sep.setFrameShape(QFrame.Shape.HLine)
-        log_sep.setStyleSheet("background: #EEF2F7; max-height: 1px; border: none;")
+        log_sep.setStyleSheet(f"background: {self._colors['border']}; max-height: 1px; border: none;")
         log_layout.addWidget(log_sep)
 
         # 日志内容区（含空状态）— 用圆角容器包裹

@@ -414,12 +414,18 @@ class LogListWidget(QListWidget):
 
     def paintEvent(self, event):
         if self.count() == 0:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            is_dark = False
+            if app:
+                is_dark = app.palette().color(QPalette.ColorRole.Window).lightness() < 128
+
             painter = QPainter(self.viewport())
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             title_font = QFont("Microsoft YaHei", 14)
             title_font.setWeight(QFont.Weight.DemiBold)
             painter.setFont(title_font)
-            painter.setPen(QColor("#9CA3AF"))
+            painter.setPen(QColor("#9CA3AF" if not is_dark else "#6B7280"))
             fm = painter.fontMetrics()
             title_y = int(self.viewport().height() * 0.35) - fm.height()
             painter.drawText(
@@ -430,7 +436,7 @@ class LogListWidget(QListWidget):
             )
             desc_font = QFont("Microsoft YaHei", 12)
             painter.setFont(desc_font)
-            painter.setPen(QColor("#9CA3AF"))
+            painter.setPen(QColor("#9CA3AF" if not is_dark else "#6B7280"))
             fm2 = painter.fontMetrics()
             desc_y = title_y + fm.height() + 8
             painter.drawText(

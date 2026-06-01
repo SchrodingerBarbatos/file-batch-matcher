@@ -186,9 +186,9 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             background: transparent;
         }}
         QLineEdit {{
-            background: #FFFFFF;
+            background: {c['input']};
             color: {c['text']};
-            border: 1px solid #D1D5DB;
+            border: 1px solid {c['input_border']};
             border-radius: {R['input']}px;
             min-height: {H_INPUT}px;
             max-height: {H_INPUT}px;
@@ -196,9 +196,9 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             font-size: 13px;
         }}
         QComboBox {{
-            background: #FFFFFF;
+            background: {c['input']};
             color: {c['text']};
-            border: 1px solid #D1D5DB;
+            border: 1px solid {c['input_border']};
             border-radius: {R['input']}px;
             min-height: {H_INPUT}px;
             max-height: {H_INPUT}px;
@@ -206,18 +206,18 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             font-size: 13px;
         }}
         QLineEdit:focus, QComboBox:focus {{
-            border-color: #22C55E;
+            border-color: {c['accent']};
             border-width: 2px;
             padding: 0px 11px;
-            background: #FFFFFF;
+            background: {c['input']};
         }}
         QLineEdit:hover, QComboBox:hover {{
             border-color: {c['accent']};
         }}
         QLineEdit:disabled, QComboBox:disabled {{
-            color: #9CA3AF;
-            background: #F3F4F6;
-            border-color: #E5E7EB;
+            color: {c['muted']};
+            background: {c['disabled_card']};
+            border-color: {c['disabled_border']};
         }}
         QComboBox::drop-down {{
             subcontrol-origin: padding;
@@ -324,17 +324,17 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             padding: 0px 10px;
             font-size: 11px;
             border-radius: 7px;
-            border: 1px solid #D1D5DB;
-            background: #FFFFFF;
-            color: #6B7280;
+            border: 1px solid {c['border']};
+            background: {c['input']};
+            color: {c['muted']};
         }}
         QPushButton#logToolButton:hover {{
-            border: 1px solid #22C55E;
-            background: #F0FDF4;
-            color: #16A34A;
+            border: 1px solid {c['accent']};
+            background: {c['card2']};
+            color: {c['accent']};
         }}
         QPushButton#logToolButton:pressed {{
-            background: #DCFCE7;
+            background: {c['border']};
         }}
         QPushButton#TabButton {{
             background: transparent;
@@ -352,8 +352,8 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             background: {c['card2']};
         }}
         QPushButton#TabButton:checked {{
-            color: #16A34A;
-            background: #EAF8EF;
+            color: {c['accent']};
+            background: {c['card2']};
             font-weight: 600;
         }}
         QPushButton#collapseHeader {{
@@ -417,51 +417,51 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             {checkbox_checked_css}
         }}
         QLineEdit#advancedInput {{
-            background-color: #FFFFFF;
-            border: 1px solid #94A3B8;
+            background-color: {c['input']};
+            border: 1px solid {c['input_border']};
             border-radius: {R['input']}px;
             min-height: 36px;
             max-height: 36px;
             padding: 0px 12px;
-            color: #111827;
+            color: {c['text']};
             font-size: 13px;
         }}
         QLineEdit#advancedInput:hover {{
-            border: 1px solid #64748B;
+            border: 1px solid {c['accent']};
         }}
         QLineEdit#advancedInput:focus {{
-            border: 2px solid #22C55E;
+            border: 2px solid {c['accent']};
             padding: 0px 11px;
-            background-color: #FFFFFF;
+            background-color: {c['input']};
         }}
         QLineEdit#advancedInput:disabled {{
-            background-color: #F3F4F6;
-            border: 1px solid #D1D5DB;
-            color: #9CA3AF;
+            background-color: {c['disabled_card']};
+            border: 1px solid {c['disabled_border']};
+            color: {c['muted']};
         }}
         QComboBox#advancedCombo {{
-            background-color: #FFFFFF;
-            border: 1px solid #94A3B8;
+            background-color: {c['input']};
+            border: 1px solid {c['input_border']};
             border-radius: {R['input']}px;
             min-height: 36px;
             max-height: 36px;
             padding-left: 12px;
             padding-right: 28px;
-            color: #111827;
+            color: {c['text']};
             font-size: 13px;
         }}
         QComboBox#advancedCombo:hover {{
-            border: 1px solid #64748B;
+            border: 1px solid {c['accent']};
         }}
         QComboBox#advancedCombo:focus {{
-            border: 2px solid #22C55E;
+            border: 2px solid {c['accent']};
             padding-left: 11px;
-            background-color: #FFFFFF;
+            background-color: {c['input']};
         }}
         QComboBox#advancedCombo:disabled {{
-            background-color: #F3F4F6;
-            border: 1px solid #D1D5DB;
-            color: #9CA3AF;
+            background-color: {c['disabled_card']};
+            border: 1px solid {c['disabled_border']};
+            color: {c['muted']};
         }}
         QComboBox#advancedCombo::drop-down {{
             subcontrol-origin: padding;
@@ -477,12 +477,12 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             height: 7px;
         }}
         QFrame#advancedContentFrame {{
-            background: #FAFBFC;
+            background: {c['card2']};
             border: none;
             border-radius: 12px;
         }}
         QFrame#logContentFrame {{
-            background: #F6F8FB;
+            background: {c['card2']};
             border: none;
             border-radius: 10px;
         }}
