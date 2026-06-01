@@ -634,6 +634,9 @@ class MainWindow(QMainWindow):
         self.text_log.setVisible(False)
         log_content_layout.addWidget(self.text_log)
 
+        # 保存布局引用，以便切换时调整拉伸因子
+        self._log_content_layout = log_content_layout
+
         log_layout.addWidget(self._log_content_frame, 1)
 
         right_layout.addWidget(log_card, 1)
@@ -787,16 +790,32 @@ class MainWindow(QMainWindow):
         """线程安全的日志回调，通过 QTimer 在主线程中更新 UI。"""
         QTimer.singleShot(0, self, lambda: self.append_log(message))
 
+    def _set_log_stretch_enabled(self, enabled):
+        """启用或禁用空状态的拉伸因子。"""
+        layout = self._log_content_layout
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item and item.spacerItem():
+                if enabled:
+                    item.changeSize(0, 0, QSizePolicy.Policy.Expanding)
+                else:
+                    item.changeSize(0, 0)
+        layout.invalidate()  # 强制重新布局
+
     def _show_log_content(self):
         """切换到日志内容模式（隐藏空状态）。"""
         if not self.text_log.isVisible():
             self._log_empty_state.setVisible(False)
+            # 禁用空状态的拉伸因子，让日志内容占据全部空间
+            self._set_log_stretch_enabled(False)
             self.text_log.setVisible(True)
 
     def _show_log_empty_state(self):
         """切换到空状态模式（隐藏日志内容）。"""
         self.text_log.setVisible(False)
+        # 恢复空状态的拉伸因子
         self._log_empty_state.setVisible(True)
+        self._set_log_stretch_enabled(True)
 
     def _get_log_dot_color(self, text):
         """根据日志类型返回圆点颜色。"""
@@ -1035,6 +1054,7 @@ class MainWindow(QMainWindow):
         self.worker = WorkerThread(self.engine, kwargs)
         self.worker.finished_signal.connect(self._process_finished)
         self.worker.log_signal.connect(self.append_log)
+        self.worker.progress_signal.connect(self._update_progress)
         self.worker.start()
 
     def _restore_controls_after_error(self):
@@ -1071,6 +1091,11 @@ class MainWindow(QMainWindow):
         if enabled:
             self._toggle_resize_fields(self.chk_resize.isChecked())
             self._toggle_ext_checkboxes(self.chk_no_ext.isChecked())
+
+    def _update_progress(self, percent):
+        """更新进度条和百分比标签。"""
+        self.progress_bar.setValue(percent)
+        self.lbl_percent.setText(f"{percent}%")
 
     def _process_finished(self):
         self._elapsed_timer.stop()

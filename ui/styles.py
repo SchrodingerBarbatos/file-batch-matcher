@@ -386,15 +386,15 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             background: {c['border']};
             color: {c['text']};
             border: none;
-            border-radius: {R['sm']}px;
-            min-height: 8px;
-            max-height: 8px;
+            border-radius: {R['input']}px;
+            min-height: 10px;
+            max-height: 10px;
             text-align: center;
         }}
         QProgressBar::chunk {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                 stop:0 {c['green']}, stop:1 {_darken(c['green'], 0.85)});
-            border-radius: {R['sm']}px;
+            border-radius: {R['input']}px;
         }}
         QCheckBox {{
             color: {c['text']};

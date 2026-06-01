@@ -17,12 +17,18 @@ from PIL import Image
 class FileMatcherEngine:
     """文件匹配复制引擎，纯业务逻辑，不含任何 UI 代码。"""
 
-    def __init__(self, log_callback=None, stop_event=None):
+    def __init__(self, log_callback=None, stop_event=None, progress_callback=None):
         self.log_callback = log_callback or print
         self.stop_event = stop_event or threading.Event()
+        self.progress_callback = progress_callback
 
     def log(self, message):
         self.log_callback(str(message))
+
+    def _update_progress(self, processed, total):
+        """更新进度并通知回调。"""
+        if self.progress_callback and total > 0:
+            self.progress_callback(int(processed / total * 100))
 
     # ---- Excel 相关 ----
 
@@ -369,6 +375,7 @@ class FileMatcherEngine:
         success = 0
         skipped = 0
         errors = 0
+        processed = 0
 
         for _, files in matched.items():
             for src_path in files:
@@ -383,6 +390,8 @@ class FileMatcherEngine:
                     if not overwrite:
                         self.log(f"[跳过] 目标已存在: {filename}")
                         skipped += 1
+                        processed += 1
+                        self._update_progress(processed, total_files)
                         continue
                     try:
                         if os.path.isfile(dst_path):
@@ -390,10 +399,14 @@ class FileMatcherEngine:
                         else:
                             self.log(f"[错误] 目标路径不是文件，无法覆盖: {filename}")
                             errors += 1
+                            processed += 1
+                            self._update_progress(processed, total_files)
                             continue
                     except Exception as e:
                         self.log(f"[错误] 删除旧文件失败 {filename}: {e}")
                         errors += 1
+                        processed += 1
+                        self._update_progress(processed, total_files)
                         continue
 
                 try:
@@ -418,6 +431,9 @@ class FileMatcherEngine:
                 except Exception as e:
                     self.log(f"[错误] 处理 {filename} 失败: {e}")
                     errors += 1
+
+                processed += 1
+                self._update_progress(processed, total_files)
 
         self.log(f"操作完成：成功 {success}，跳过 {skipped}，错误 {errors}")
         return success, skipped, errors, unmatched
