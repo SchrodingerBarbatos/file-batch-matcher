@@ -131,6 +131,7 @@ class StepRow(QWidget):
     def __init__(self, number, label_text, input_widget, browse_button=None,
                  status_text="", parent=None):
         super().__init__(parent)
+        self.setStyleSheet("background: transparent;")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 2, 0, 2)
         outer.setSpacing(2)
@@ -275,6 +276,7 @@ class StatCard(QFrame):
     def __init__(self, label, color, icon_type="circle", parent=None):
         super().__init__(parent)
         self.setObjectName("StatCard")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._color = color
 
         layout = QHBoxLayout(self)
@@ -316,6 +318,7 @@ class CurrentFileBar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("currentFileBar")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 0, 16, 0)

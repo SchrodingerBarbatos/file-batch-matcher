@@ -525,6 +525,7 @@ class MainWindow(QMainWindow):
 
         adv_stack_widget = QWidget()
         adv_stack_widget.setLayout(self._adv_stack)
+        adv_stack_widget.setStyleSheet("background: transparent;")
         adv_content_inner.addWidget(adv_stack_widget)
         adv_layout.addWidget(adv_content_frame, 1)
 
