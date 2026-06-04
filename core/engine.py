@@ -197,9 +197,9 @@ class FileMatcherEngine:
             original_size = os.path.getsize(image_path)
 
             with Image.open(image_path) as img:
-                # 仅 800×800 精确匹配时跳过
-                if img.width == max_w and img.height == max_h:
-                    self.log(f"[图片跳过] 尺寸符合要求: {os.path.basename(image_path)}")
+                # 仅 800×800 精确匹配且文件大小符合要求时跳过
+                if img.width == max_w and img.height == max_h and original_size <= max_size:
+                    self.log(f"[图片跳过] 尺寸与大小均符合要求: {os.path.basename(image_path)}")
                     return True
 
                 # 直接拉伸到目标尺寸
@@ -218,10 +218,34 @@ class FileMatcherEngine:
 
                 if ext == '.png':
                     img.save(tmp_path, format='PNG', optimize=True)
-                    if os.path.getsize(tmp_path) > 0:
-                        os.replace(tmp_path, image_path)
-                    else:
+                    png_size = os.path.getsize(tmp_path)
+                    if png_size <= 0:
                         raise RuntimeError("临时文件大小为 0，已取消替换原图")
+                    # 文件大小符合要求，直接替换
+                    if png_size <= max_size:
+                        os.replace(tmp_path, image_path)
+                    elif img.mode in ('RGBA', 'LA', 'RGB', 'P'):
+                        # 通过颜色量化（降为调色板模式）压缩 PNG
+                        quantized = False
+                        for colors in (256, 128, 64, 32):
+                            q_img = img.quantize(colors=colors, method=2)
+                            q_img.save(tmp_path, format='PNG', optimize=True)
+                            q_size = os.path.getsize(tmp_path)
+                            if q_size <= max_size:
+                                os.replace(tmp_path, image_path)
+                                quantized = True
+                                self.log(f"[图片压缩] PNG 量化至 {colors} 色: "
+                                         f"{os.path.basename(image_path)} ({png_size/1000:.0f}KB → {q_size/1000:.0f}KB)")
+                                return True
+                        # 量化到最小仍超限，使用最小量化结果
+                        if not quantized:
+                            os.replace(tmp_path, image_path)
+                            self.log(f"[图片警告] PNG 即使量化到 32 色仍超出目标: "
+                                     f"{os.path.basename(image_path)} ({q_size/1000:.0f}KB > {max_size/1000:.0f}KB)")
+                    else:
+                        os.replace(tmp_path, image_path)
+                        self.log(f"[图片警告] PNG 格式无法压缩到目标大小: "
+                                 f"{os.path.basename(image_path)} ({png_size/1000:.0f}KB > {max_size/1000:.0f}KB)")
                     self.log(f"[图片处理] {os.path.basename(image_path)}")
                     return True
 
