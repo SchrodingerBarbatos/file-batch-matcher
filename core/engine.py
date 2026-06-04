@@ -202,8 +202,8 @@ class FileMatcherEngine:
                     self.log(f"[图片跳过] 尺寸符合要求: {os.path.basename(image_path)}")
                     return True
 
-                # 使用 thumbnail 保持宽高比缩放
-                img.thumbnail((max_w, max_h), Image.LANCZOS)
+                # 直接拉伸到目标尺寸
+                img = img.resize((max_w, max_h), Image.LANCZOS)
 
                 if ext in ['.jpg', '.jpeg'] and img.mode in ('RGBA', 'LA', 'P'):
                     background = Image.new('RGB', img.size, (255, 255, 255))
