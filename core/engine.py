@@ -197,15 +197,13 @@ class FileMatcherEngine:
             original_size = os.path.getsize(image_path)
 
             with Image.open(image_path) as img:
+                # 仅 800×800 精确匹配时跳过
+                if img.width == max_w and img.height == max_h:
+                    self.log(f"[图片跳过] 尺寸符合要求: {os.path.basename(image_path)}")
+                    return True
+
                 # 使用 thumbnail 保持宽高比缩放
                 img.thumbnail((max_w, max_h), Image.LANCZOS)
-
-                dimension_ok = (img.width <= max_w and img.height <= max_h)
-                size_ok = original_size <= max_size
-
-                if dimension_ok and size_ok:
-                    self.log(f"[图片跳过] 已符合要求: {os.path.basename(image_path)}")
-                    return True
 
                 if ext in ['.jpg', '.jpeg'] and img.mode in ('RGBA', 'LA', 'P'):
                     background = Image.new('RGB', img.size, (255, 255, 255))
