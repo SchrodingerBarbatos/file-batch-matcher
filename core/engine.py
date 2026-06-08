@@ -31,6 +31,79 @@ class FileMatcherEngine:
         if self.progress_callback and total > 0:
             self.progress_callback(int(processed / total * 100))
 
+    # ---- 格式探测 / 标准化 ----
+
+    # Pillow Image.format → 规范扩展名
+    _FORMAT_TO_EXT = {
+        'JPEG': '.jpg',
+        'PNG': '.png',
+        'WEBP': '.webp',
+        'BMP': '.bmp',
+        'GIF': '.gif',
+        'TIFF': '.tiff',
+        'AVIF': '.avif',
+    }
+
+    @staticmethod
+    def detect_real_format(path):
+        """用 Pillow 探测图片真实格式，返回 (pil_format, canonical_ext) 或 (None, None)。"""
+        try:
+            if os.path.getsize(path) == 0:
+                return None, None
+            with Image.open(path) as img:
+                fmt = img.format
+                ext = FileMatcherEngine._FORMAT_TO_EXT.get(fmt)
+                if ext:
+                    return fmt, ext
+                return None, None
+        except (IOError, OSError, SyntaxError, ValueError, KeyError):
+            return None, None
+
+    @staticmethod
+    def _safe_rename(old_path, new_path):
+        """安全重命名：目标已存在时自动追加计数器后缀。"""
+        if not os.path.exists(new_path) or os.path.abspath(old_path) == os.path.abspath(new_path):
+            os.rename(old_path, new_path)
+            return new_path
+        base, ext = os.path.splitext(new_path)
+        counter = 1
+        while os.path.exists(f"{base}_{counter}{ext}"):
+            counter += 1
+        new_path = f"{base}_{counter}{ext}"
+        os.rename(old_path, new_path)
+        return new_path
+
+    def normalize_image_file(self, path):
+        """标准化图片文件：0 字节报错，伪后缀修正。
+
+        Returns:
+            (new_path, status, real_fmt) — status 为 'ok', 'skipped', 'zero_byte', 'fixed'。
+            real_fmt 为 Pillow 格式字符串（如 'JPEG'），非图片时为 None。
+        """
+        if not os.path.isfile(path):
+            return path, 'skipped', None
+
+        if os.path.getsize(path) == 0:
+            self.log(f"[错误] 0 字节文件，已跳过: {os.path.basename(path)}")
+            return path, 'zero_byte', None
+
+        real_fmt, canonical_ext = self.detect_real_format(path)
+
+        if real_fmt is None:
+            # 非可识别图片，原样跳过
+            return path, 'skipped', None
+
+        current_ext = os.path.splitext(path)[1].lower()
+        if current_ext == canonical_ext:
+            return path, 'ok', real_fmt
+
+        # 修正后缀
+        base = os.path.splitext(path)[0]
+        new_path = self._safe_rename(path, base + canonical_ext)
+        self.log(f"[后缀修正] {os.path.basename(path)} -> {os.path.basename(new_path)} "
+                 f"(真实格式: {real_fmt})")
+        return new_path, 'fixed', real_fmt
+
     # ---- Excel 相关 ----
 
     @staticmethod
@@ -187,13 +260,18 @@ class FileMatcherEngine:
     # ---- 图片处理 ----
 
     def process_image(self, image_path, max_w=800, max_h=800, max_size=5000000):
-        """安全处理图片：调整尺寸（保持宽高比）、压缩大小。"""
+        """安全处理图片：调整尺寸（拉伸到目标尺寸）、压缩大小。"""
         tmp_path = None
         try:
             if max_w <= 0 or max_h <= 0 or max_size <= 0:
                 raise ValueError("宽、高、最大大小必须大于 0")
 
-            ext = os.path.splitext(image_path)[1].lower()
+            # 用真实格式决定保存方式，而非文件后缀
+            real_fmt, canonical_ext = self.detect_real_format(image_path)
+            if real_fmt is None:
+                raise ValueError("无法识别图片格式")
+            save_format = real_fmt
+
             original_size = os.path.getsize(image_path)
 
             with Image.open(image_path) as img:
@@ -205,18 +283,19 @@ class FileMatcherEngine:
                 # 直接拉伸到目标尺寸
                 img = img.resize((max_w, max_h), Image.LANCZOS)
 
-                if ext in ['.jpg', '.jpeg'] and img.mode in ('RGBA', 'LA', 'P'):
+                # 按真实格式处理透明通道
+                if save_format == 'JPEG' and img.mode in ('RGBA', 'LA', 'P'):
                     background = Image.new('RGB', img.size, (255, 255, 255))
                     if img.mode == 'P':
                         img = img.convert('RGBA')
                     background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
                     img = background
-                elif ext in ['.jpg', '.jpeg'] and img.mode != 'RGB':
+                elif save_format == 'JPEG' and img.mode != 'RGB':
                     img = img.convert('RGB')
 
                 tmp_path = image_path + ".tmp"
 
-                if ext == '.png':
+                if save_format == 'PNG':
                     img.save(tmp_path, format='PNG', optimize=True)
                     png_size = os.path.getsize(tmp_path)
                     if png_size <= 0:
@@ -251,12 +330,12 @@ class FileMatcherEngine:
 
                 quality = 95
                 while quality >= 20:
-                    if ext in ['.jpg', '.jpeg']:
+                    if save_format == 'JPEG':
                         img.save(tmp_path, format='JPEG', quality=quality, optimize=True)
-                    elif ext == '.webp':
+                    elif save_format == 'WEBP':
                         img.save(tmp_path, format='WEBP', quality=quality, method=6)
                     else:
-                        img.save(tmp_path, format=img.format or 'PNG')
+                        img.save(tmp_path, format=save_format)
                         break  # 无损格式不支持 quality 压缩，无需循环
 
                     if os.path.getsize(tmp_path) <= max_size:
@@ -281,31 +360,37 @@ class FileMatcherEngine:
             return False
 
     def convert_image_format(self, image_path, target_format):
-        """转换图片格式：非标准格式转为 JPEG/PNG。"""
+        """转换图片格式：修正伪后缀 / 真正转码到目标格式。"""
         tmp_path = None
         try:
+            real_fmt, canonical_ext = self.detect_real_format(image_path)
+            if real_fmt is None:
+                self.log(f"[格式跳过] 无法识别的图片: {os.path.basename(image_path)}")
+                return image_path
+
+            if target_format not in ('JPEG', 'PNG'):
+                self.log(f"[格式跳过] 不支持的目标格式: {target_format}")
+                return image_path
+
+            target_ext = '.jpg' if target_format == 'JPEG' else '.png'
+            current_ext = os.path.splitext(image_path)[1].lower()
+
+            # 情况 1：真实格式已是目标格式
+            if real_fmt == target_format:
+                if current_ext == target_ext:
+                    # 后缀也正确，无需操作
+                    return image_path
+                # 内容正确但后缀错误，修正后缀即可
+                base = os.path.splitext(image_path)[0]
+                new_path = self._safe_rename(image_path, base + target_ext)
+                self.log(f"[后缀修正] {os.path.basename(image_path)} -> {os.path.basename(new_path)}")
+                return new_path
+
+            # 情况 2：真实格式 ≠ 目标格式，真正转码
             with Image.open(image_path) as img:
-                real_format = img.format
+                base = os.path.splitext(image_path)[0]
+                new_path = base + target_ext
 
-                # jpg/jpeg/png 已是常见格式，跳过转换
-                if real_format in ('JPEG', 'PNG'):
-                    self.log(f"[格式跳过] 已是常见格式: {os.path.basename(image_path)} ({real_format})")
-                    return image_path
-
-                base_name = os.path.splitext(image_path)[0]
-
-                # 确定目标扩展名
-                if target_format == 'JPEG':
-                    new_ext = '.jpg'
-                elif target_format == 'PNG':
-                    new_ext = '.png'
-                else:
-                    self.log(f"[格式跳过] 不支持的目标格式: {target_format}")
-                    return image_path
-
-                new_path = base_name + new_ext
-
-                # 转换为 JPEG 时处理透明度
                 if target_format == 'JPEG':
                     if img.mode in ('RGBA', 'LA', 'P'):
                         background = Image.new('RGB', img.size, (255, 255, 255))
@@ -318,7 +403,6 @@ class FileMatcherEngine:
 
                 tmp_path = new_path + ".tmp"
 
-                # 保存为目标格式
                 if target_format == 'JPEG':
                     img.save(tmp_path, format='JPEG', quality=95, optimize=True)
                 elif target_format == 'PNG':
@@ -328,7 +412,7 @@ class FileMatcherEngine:
                     os.replace(tmp_path, new_path)
                     if image_path != new_path and os.path.exists(image_path):
                         os.remove(image_path)
-                    self.log(f"[格式转换] {os.path.basename(image_path)} ({real_format}) -> {os.path.basename(new_path)}")
+                    self.log(f"[格式转换] {os.path.basename(image_path)} ({real_fmt}) -> {os.path.basename(new_path)}")
                     return new_path
                 else:
                     raise RuntimeError("转换后文件大小为 0")
@@ -346,9 +430,30 @@ class FileMatcherEngine:
 
     def create_zip_archives(self, dst_dir, max_zip_size):
         """将目标文件夹打包为 zip，超过大小限制时自动分卷。"""
-        files = [f for f in os.listdir(dst_dir) if os.path.isfile(os.path.join(dst_dir, f))]
-        if not files:
+        all_files = [f for f in os.listdir(dst_dir) if os.path.isfile(os.path.join(dst_dir, f))]
+        if not all_files:
             self.log("[压缩] 没有文件需要打包")
+            return
+
+        # 过滤掉 0 字节图片和伪后缀图片
+        files = []
+        for f in all_files:
+            fp = os.path.join(dst_dir, f)
+            fsize = os.path.getsize(fp)
+            if fsize == 0:
+                self.log(f"[压缩] 跳过 0 字节文件: {f}")
+                continue
+            real_fmt, _ = self.detect_real_format(fp)
+            if real_fmt is not None:
+                current_ext = os.path.splitext(f)[1].lower()
+                canonical_ext = FileMatcherEngine._FORMAT_TO_EXT.get(real_fmt)
+                if canonical_ext and current_ext != canonical_ext:
+                    self.log(f"[压缩] 跳过后缀不一致的图片: {f}")
+                    continue
+            files.append(f)
+
+        if not files:
+            self.log("[压缩] 没有有效文件需要打包")
             return
 
         archive_dir = dst_dir + "_压缩包"
@@ -501,14 +606,26 @@ class FileMatcherEngine:
                         shutil.copy2(src_path, dst_path)
                         self.log(f"[复制] {filename}")
 
+                    # 先标准化图片（修正伪后缀）
+                    dst_path, norm_status, real_fmt = self.normalize_image_file(dst_path)
+                    if norm_status == 'zero_byte':
+                        errors += 1
+                        processed += 1
+                        self._update_progress(processed, total_files)
+                        continue
+
                     if enable_convert:
-                        ext = os.path.splitext(dst_path)[1].lower()
-                        if ext in ['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.gif', '.tiff', '.avif']:
+                        if real_fmt is None:
+                            real_fmt, _ = self.detect_real_format(dst_path)
+                        if real_fmt:
                             dst_path = self.convert_image_format(dst_path, target_format)
+                            # convert 可能改变后缀，重新探测
+                            real_fmt, _ = self.detect_real_format(dst_path)
 
                     if enable_resize:
-                        ext = os.path.splitext(dst_path)[1].lower()
-                        if ext in ['.jpg', '.jpeg', '.png', '.webp']:
+                        if real_fmt is None:
+                            real_fmt, _ = self.detect_real_format(dst_path)
+                        if real_fmt in ('JPEG', 'PNG', 'WEBP'):
                             self.process_image(dst_path, max_width, max_height, max_size)
 
                     success += 1
