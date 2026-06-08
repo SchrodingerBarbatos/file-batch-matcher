@@ -360,7 +360,12 @@ class FileMatcherEngine:
             return False
 
     def convert_image_format(self, image_path, target_format):
-        """转换图片格式：修正伪后缀 / 真正转码到目标格式。"""
+        """转换图片格式：修正伪后缀 / 非标准格式转码到目标格式。
+
+        规则：
+        - 真实格式是 JPEG/PNG：绝不跨格式转码，后缀错误时只修正后缀。
+        - 真实格式非标准（BMP/WEBP/GIF/TIFF/AVIF）：按 target_format 转码。
+        """
         tmp_path = None
         try:
             real_fmt, canonical_ext = self.detect_real_format(image_path)
@@ -372,21 +377,20 @@ class FileMatcherEngine:
                 self.log(f"[格式跳过] 不支持的目标格式: {target_format}")
                 return image_path
 
-            target_ext = '.jpg' if target_format == 'JPEG' else '.png'
             current_ext = os.path.splitext(image_path)[1].lower()
 
-            # 情况 1：真实格式已是目标格式
-            if real_fmt == target_format:
-                if current_ext == target_ext:
-                    # 后缀也正确，无需操作
+            # 真实格式是 JPEG/PNG：绝不跨格式转码，只修正后缀
+            if real_fmt in ('JPEG', 'PNG'):
+                if current_ext == canonical_ext:
+                    self.log(f"[格式跳过] {real_fmt} 格式无需转换: {os.path.basename(image_path)}")
                     return image_path
-                # 内容正确但后缀错误，修正后缀即可
                 base = os.path.splitext(image_path)[0]
-                new_path = self._safe_rename(image_path, base + target_ext)
+                new_path = self._safe_rename(image_path, base + canonical_ext)
                 self.log(f"[后缀修正] {os.path.basename(image_path)} -> {os.path.basename(new_path)}")
                 return new_path
 
-            # 情况 2：真实格式 ≠ 目标格式，真正转码
+            # 真实格式非标准：按 target_format 转码
+            target_ext = '.jpg' if target_format == 'JPEG' else '.png'
             with Image.open(image_path) as img:
                 base = os.path.splitext(image_path)[0]
                 new_path = base + target_ext

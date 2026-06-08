@@ -127,55 +127,70 @@ class TestNormalizeImageFile:
 
 
 class TestConvertImageFormat:
-    """convert_image_format 的测试。"""
+    """convert_image_format 的测试 — 标准格式绝不互转。"""
 
-    def test_keep_original_format_fixes_suffix(self, engine, tmp_dir):
-        """目标 JPEG、真实 JPEG、后缀错误 → 仅修正后缀，不转码。"""
-        # 保存为 JPEG 内容，但用 .png 后缀
-        src = os.path.join(tmp_dir, "fake.png")
-        _save_jpeg(src)
+    def test_real_png_with_png_ext_target_jpeg_no_change(self, engine, tmp_dir):
+        """规则 1: 真实 PNG + .png + target JPEG → 不转换，仍是 .png。"""
+        src = os.path.join(tmp_dir, "photo.png")
+        _save_png(src)
         src_size = os.path.getsize(src)
 
         result = engine.convert_image_format(src, 'JPEG')
 
-        assert result.endswith('.jpg')
-        assert os.path.isfile(result)
-        assert not os.path.exists(src)
-        # 不应转码，文件大小应与原始一致（rename 操作）
+        assert result == src  # 路径不变
+        assert os.path.getsize(result) == src_size
+        with Image.open(result) as img:
+            assert img.format == 'PNG'
+
+    def test_real_jpeg_with_jpg_ext_target_png_no_change(self, engine, tmp_dir):
+        """规则 2: 真实 JPEG + .jpg + target PNG → 不转换，仍是 .jpg。"""
+        src = os.path.join(tmp_dir, "photo.jpg")
+        _save_jpeg(src)
+        src_size = os.path.getsize(src)
+
+        result = engine.convert_image_format(src, 'PNG')
+
+        assert result == src
         assert os.path.getsize(result) == src_size
         with Image.open(result) as img:
             assert img.format == 'JPEG'
 
-    def test_keep_original_format_png_fixes_suffix(self, engine, tmp_dir):
-        """目标 PNG、真实 PNG、后缀错误 → 仅修正后缀。"""
+    def test_real_png_with_jpg_ext_fixes_suffix_only(self, engine, tmp_dir):
+        """规则 3a: 真实 PNG + .jpg → 只修正为 .png，不转 JPEG。"""
         src = os.path.join(tmp_dir, "fake.jpg")
         _save_png(src)
+        src_size = os.path.getsize(src)
 
-        result = engine.convert_image_format(src, 'PNG')
+        result = engine.convert_image_format(src, 'JPEG')
 
         assert result.endswith('.png')
         assert os.path.isfile(result)
         assert not os.path.exists(src)
+        # 仅 rename，不应转码，文件大小不变
+        assert os.path.getsize(result) == src_size
         with Image.open(result) as img:
             assert img.format == 'PNG'
 
-    def test_target_conversion_jpeg_to_png(self, engine, tmp_dir):
-        """目标 PNG、真实 JPEG → 真正转码，内容和后缀都更新。"""
-        src = os.path.join(tmp_dir, "photo.jpg")
+    def test_real_jpeg_with_png_ext_fixes_suffix_only(self, engine, tmp_dir):
+        """规则 3b: 真实 JPEG + .png → 只修正为 .jpg，不转 PNG。"""
+        src = os.path.join(tmp_dir, "fake.png")
         _save_jpeg(src)
+        src_size = os.path.getsize(src)
 
         result = engine.convert_image_format(src, 'PNG')
 
-        assert result.endswith('.png')
+        assert result.endswith('.jpg')
         assert os.path.isfile(result)
         assert not os.path.exists(src)
+        assert os.path.getsize(result) == src_size
         with Image.open(result) as img:
-            assert img.format == 'PNG'
+            assert img.format == 'JPEG'
 
-    def test_target_conversion_png_to_jpeg(self, engine, tmp_dir):
-        """目标 JPEG、真实 PNG（带透明） → 真正转码，RGBA 处理为 RGB。"""
-        src = os.path.join(tmp_dir, "transparent.png")
-        _save_png(src)
+    def test_bmp_to_jpeg(self, engine, tmp_dir):
+        """规则 4: 真实 BMP + target JPEG → 转成 .jpg。"""
+        src = os.path.join(tmp_dir, "image.bmp")
+        img = Image.new('RGB', (10, 10), color='blue')
+        img.save(src, format='BMP')
 
         result = engine.convert_image_format(src, 'JPEG')
 
@@ -184,10 +199,37 @@ class TestConvertImageFormat:
         assert not os.path.exists(src)
         with Image.open(result) as img:
             assert img.format == 'JPEG'
-            assert img.mode == 'RGB'
+
+    def test_bmp_to_png(self, engine, tmp_dir):
+        """规则 4: 真实 BMP + target PNG → 转成 .png。"""
+        src = os.path.join(tmp_dir, "image.bmp")
+        img = Image.new('RGB', (10, 10), color='green')
+        img.save(src, format='BMP')
+
+        result = engine.convert_image_format(src, 'PNG')
+
+        assert result.endswith('.png')
+        assert os.path.isfile(result)
+        assert not os.path.exists(src)
+        with Image.open(result) as img:
+            assert img.format == 'PNG'
+
+    def test_webp_to_jpeg(self, engine, tmp_dir):
+        """规则 4: 真实 WebP + target JPEG → 转成 .jpg。"""
+        src = os.path.join(tmp_dir, "image.webp")
+        img = Image.new('RGB', (10, 10), color='red')
+        img.save(src, format='WEBP')
+
+        result = engine.convert_image_format(src, 'JPEG')
+
+        assert result.endswith('.jpg')
+        assert os.path.isfile(result)
+        assert not os.path.exists(src)
+        with Image.open(result) as img:
+            assert img.format == 'JPEG'
 
     def test_already_correct_skips(self, engine, tmp_dir):
-        """后缀和真实格式都正确 → 无需操作，原路径返回。"""
+        """真实 JPEG + .jpg → 不论 target_format，直接返回。"""
         src = os.path.join(tmp_dir, "correct.jpg")
         _save_jpeg(src)
 
