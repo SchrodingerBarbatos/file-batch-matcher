@@ -100,6 +100,30 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
         'tab': RADIUS_TAB,
         'cb': RADIUS_CHECKBOX,
     }
+    start_disabled_background = c['card2']
+    start_disabled_border = c['border']
+    start_disabled_color = c['muted']
+    stop_background = 'transparent'
+    stop_border = c['border']
+    stop_color = c['muted']
+    stop_hover_background = c['card2']
+    stop_hover_border = c['red']
+    stop_hover_color = c['red']
+    stop_pressed_background = c['border']
+    if c.get('is_dark'):
+        start_disabled_background = (
+            "qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+            f"stop:0 {_darken(c['green'], 0.62)}, stop:1 {_darken(c['green'], 0.46)})"
+        )
+        start_disabled_border = _darken(c['green'], 0.74)
+        start_disabled_color = '#ECFDF5'
+        stop_background = _darken(c['red'], 0.22)
+        stop_border = c['red']
+        stop_color = c['red']
+        stop_hover_background = c['red_hover']
+        stop_hover_border = c['red_hover']
+        stop_hover_color = '#FFFFFF'
+        stop_pressed_background = _darken(c['red_hover'], 0.72)
     return f"""
         QMainWindow, QWidget {{
             background: {c['window']};
@@ -297,14 +321,14 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             background: {_darken(c['green_hover'], 0.8)};
         }}
         QPushButton#startButton:disabled {{
-            background: {c['card2']};
-            border-color: {c['border']};
-            color: {c['muted']};
+            background: {start_disabled_background};
+            border-color: {start_disabled_border};
+            color: {start_disabled_color};
         }}
         QPushButton#stopButton {{
-            background: transparent;
-            border: 1px solid {c['border']};
-            color: {c['muted']};
+            background: {stop_background};
+            border: 1px solid {stop_border};
+            color: {stop_color};
             font-size: 13px;
             font-weight: 600;
             min-height: {H_PRIMARY_BTN}px;
@@ -313,9 +337,14 @@ def build_stylesheet(c, checkbox_checked_css, checkbox_unchecked_css, arrow_ico)
             padding: 0px 14px;
         }}
         QPushButton#stopButton:hover {{
-            background: {c['card2']};
-            border-color: {c['red']};
-            color: {c['red']};
+            background: {stop_hover_background};
+            border-color: {stop_hover_border};
+            color: {stop_hover_color};
+        }}
+        QPushButton#stopButton:pressed {{
+            background: {stop_pressed_background};
+            border-color: {stop_hover_border};
+            color: {stop_hover_color};
         }}
         QPushButton#stopButton:disabled {{
             background: transparent;
