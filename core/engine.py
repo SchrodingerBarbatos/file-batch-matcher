@@ -7,6 +7,7 @@
 import os
 import re
 import shutil
+import tempfile
 import threading
 import zipfile
 from collections import defaultdict
@@ -513,6 +514,62 @@ class FileMatcherEngine:
 
     # ---- 主处理流程 ----
 
+    def _stage_and_publish(self, src_path, dst_path, overwrite, enable_convert,
+                           target_format, enable_resize, max_width, max_height, max_size):
+        """在目标目录的临时区准备文件；处理成功后才发布。"""
+        filename = os.path.basename(dst_path)
+        if os.path.getsize(src_path) == 0:
+            self.log(f"[错误] 0 字节文件，已跳过: {filename}")
+            return 'error'
+
+        dst_dir = os.path.dirname(dst_path)
+        with tempfile.TemporaryDirectory(prefix='.matcher-', dir=dst_dir) as stage_dir:
+            staged = os.path.join(stage_dir, filename)
+            shutil.copy2(src_path, staged)
+            staged, norm_status, real_fmt = self.normalize_image_file(staged)
+            if norm_status == 'zero_byte':
+                return 'error'
+
+            if enable_convert and real_fmt:
+                normalized = staged
+                staged = self.convert_image_format(staged, target_format)
+                if (staged == normalized and real_fmt not in ('JPEG', 'PNG')
+                        and target_format in ('JPEG', 'PNG')):
+                    return 'error'
+                real_fmt, _ = self.detect_real_format(staged)
+
+            if (enable_resize and real_fmt in ('JPEG', 'PNG', 'WEBP')
+                    and not self.process_image(staged, max_width, max_height, max_size)):
+                return 'error'
+            if not os.path.isfile(staged) or os.path.getsize(staged) == 0:
+                raise OSError("待发布文件不存在或为空")
+            if self.stop_event.is_set():
+                return 'stopped'
+
+            final_path = os.path.join(dst_dir, os.path.basename(staged))
+            same_name = os.path.normcase(final_path) == os.path.normcase(dst_path)
+            old_destination = os.path.lexists(dst_path)
+            if old_destination:
+                if not overwrite:
+                    self.log(f"[跳过] 目标已存在: {filename}")
+                    return 'skipped'
+                if not os.path.isfile(dst_path):
+                    raise OSError("目标路径不是文件，无法覆盖")
+
+            if not same_name:
+                # 改后缀时，不覆盖另一张已存在的图片。
+                base, ext = os.path.splitext(final_path)
+                index = 1
+                while os.path.lexists(final_path):
+                    final_path = f"{base}_{index}{ext}"
+                    index += 1
+
+            os.replace(staged, final_path)
+            if not same_name and old_destination:
+                # 新文件已落盘后，才清理旧后缀的目标文件。
+                os.remove(dst_path)
+        return 'ok'
+
     def run(self, excel_path, column, src_dir, dst_dir, extensions,
             recursive=False, move_mode=False, overwrite=False,
             enable_resize=False, max_width=800, max_height=800, max_size=5000000,
@@ -524,7 +581,7 @@ class FileMatcherEngine:
         返回 (success, skipped, errors, unmatched_ids)。
         """
         # 防止源目录和目标目录相同导致数据丢失
-        if os.path.abspath(src_dir) == os.path.abspath(dst_dir):
+        if os.path.normcase(os.path.realpath(src_dir)) == os.path.normcase(os.path.realpath(dst_dir)):
             if move_mode:
                 self.log("[错误] 源文件夹与目标文件夹相同，移动模式会删除源文件，已取消操作。")
                 return 0, 0, 0, []
@@ -579,60 +636,29 @@ class FileMatcherEngine:
                 filename = os.path.basename(src_path)
                 dst_path = os.path.join(dst_dir, filename)
 
-                if os.path.exists(dst_path):
-                    if not overwrite:
-                        self.log(f"[跳过] 目标已存在: {filename}")
-                        skipped += 1
-                        processed += 1
-                        self._update_progress(processed, total_files)
-                        continue
-                    try:
-                        if os.path.isfile(dst_path):
-                            os.remove(dst_path)
-                        else:
-                            self.log(f"[错误] 目标路径不是文件，无法覆盖: {filename}")
-                            errors += 1
-                            processed += 1
-                            self._update_progress(processed, total_files)
-                            continue
-                    except Exception as e:
-                        self.log(f"[错误] 删除旧文件失败 {filename}: {e}")
-                        errors += 1
-                        processed += 1
-                        self._update_progress(processed, total_files)
-                        continue
-
                 try:
-                    if move_mode:
-                        shutil.move(src_path, dst_path)
-                        self.log(f"[移动] {filename}")
+                    if os.path.lexists(dst_path) and (
+                            not overwrite or (os.path.exists(dst_path) and os.path.samefile(src_path, dst_path))):
+                        self.log(f"[跳过] 目标已存在或与源文件相同: {filename}")
+                        skipped += 1
                     else:
-                        shutil.copy2(src_path, dst_path)
-                        self.log(f"[复制] {filename}")
-
-                    # 先标准化图片（修正伪后缀）
-                    dst_path, norm_status, real_fmt = self.normalize_image_file(dst_path)
-                    if norm_status == 'zero_byte':
-                        errors += 1
-                        processed += 1
-                        self._update_progress(processed, total_files)
-                        continue
-
-                    if enable_convert:
-                        if real_fmt is None:
-                            real_fmt, _ = self.detect_real_format(dst_path)
-                        if real_fmt:
-                            dst_path = self.convert_image_format(dst_path, target_format)
-                            # convert 可能改变后缀，重新探测
-                            real_fmt, _ = self.detect_real_format(dst_path)
-
-                    if enable_resize:
-                        if real_fmt is None:
-                            real_fmt, _ = self.detect_real_format(dst_path)
-                        if real_fmt in ('JPEG', 'PNG', 'WEBP'):
-                            self.process_image(dst_path, max_width, max_height, max_size)
-
-                    success += 1
+                        result = self._stage_and_publish(
+                            src_path, dst_path, overwrite, enable_convert, target_format,
+                            enable_resize, max_width, max_height, max_size)
+                        if result == 'ok':
+                            if move_mode:
+                                os.remove(src_path)
+                                self.log(f"[移动] {filename}")
+                            else:
+                                self.log(f"[复制] {filename}")
+                            success += 1
+                        elif result == 'stopped':
+                            self.log("已停止复制/移动。")
+                            return success, skipped, errors, unmatched
+                        elif result == 'skipped':
+                            skipped += 1
+                        else:
+                            errors += 1
                 except Exception as e:
                     self.log(f"[错误] 处理 {filename} 失败: {e}")
                     errors += 1
