@@ -11,6 +11,7 @@ import tempfile
 import threading
 import zipfile
 from collections import defaultdict
+from datetime import datetime
 
 import pandas as pd
 from PIL import Image
@@ -215,9 +216,12 @@ class FileMatcherEngine:
             return None
         return {ext.lower() if ext.startswith('.') else f'.{ext.lower()}' for ext in ext_text.split()}
 
-    def iter_files(self, src_dir, recursive):
+    def iter_files(self, src_dir, recursive, excluded_dirs=()):
         if recursive:
-            for root, _, files in os.walk(src_dir):
+            excluded = {os.path.normcase(os.path.realpath(path)) for path in excluded_dirs}
+            for root, directories, files in os.walk(src_dir):
+                directories[:] = [name for name in directories
+                                  if os.path.normcase(os.path.realpath(os.path.join(root, name))) not in excluded]
                 if self.stop_event.is_set():
                     return
                 for filename in files:
@@ -230,11 +234,11 @@ class FileMatcherEngine:
                     if entry.is_file():
                         yield src_dir, entry.name
 
-    def match_files(self, src_dir, ids, extensions, recursive):
+    def match_files(self, src_dir, ids, extensions, recursive, excluded_dirs=()):
         id_set = set(ids)
         matched = defaultdict(list)
 
-        for root, filename in self.iter_files(src_dir, recursive):
+        for root, filename in self.iter_files(src_dir, recursive, excluded_dirs):
             if self.stop_event.is_set():
                 break
 
@@ -243,17 +247,13 @@ class FileMatcherEngine:
                 if ext.lower() not in extensions:
                     continue
 
-            prefix = filename.split('_', 1)[0]
-            if prefix in id_set:
-                matched[prefix].append(os.path.join(root, filename))
-                continue
-
-            for num in ids:
-                if filename.startswith(num):
-                    # 确保编号后紧跟分隔符或文件结尾，避免误匹配
-                    # 如 "123" 不应匹配 "12345_photo.jpg"
-                    if len(filename) == len(num) or not filename[len(num)].isalnum():
-                        matched[num].append(os.path.join(root, filename))
+            # Prefer the longest complete ID, independent of Excel row order.
+            # Test only possible boundaries, not every ID for every file.
+            for end in range(len(filename), 0, -1):
+                if end == len(filename) or not filename[end].isalnum():
+                    prefix = filename[:end]
+                    if prefix in id_set:
+                        matched[prefix].append(os.path.join(root, filename))
                         break
 
         return matched
@@ -433,84 +433,68 @@ class FileMatcherEngine:
 
     # ---- 压缩打包 ----
 
-    def create_zip_archives(self, dst_dir, max_zip_size):
-        """将目标文件夹打包为 zip，超过大小限制时自动分卷。"""
-        all_files = [f for f in os.listdir(dst_dir) if os.path.isfile(os.path.join(dst_dir, f))]
-        if not all_files:
-            self.log("[压缩] 没有文件需要打包")
-            return
-
-        # 过滤掉 0 字节图片和伪后缀图片
+    def create_zip_archives(self, dst_dir, max_zip_size, filenames):
+        """Archive this run's published files in a new directory, never older output."""
+        dst_dir = os.path.normpath(dst_dir)
         files = []
-        for f in all_files:
-            fp = os.path.join(dst_dir, f)
-            fsize = os.path.getsize(fp)
-            if fsize == 0:
-                self.log(f"[压缩] 跳过 0 字节文件: {f}")
+        for name in sorted(set(filenames)):
+            if name in (".", "..") or name != os.path.basename(name):
+                raise ValueError("打包文件名必须是目标文件夹内的文件名")
+            path = os.path.join(dst_dir, name)
+            if not os.path.isfile(path):
                 continue
-            real_fmt, _ = self.detect_real_format(fp)
-            if real_fmt is not None:
-                current_ext = os.path.splitext(f)[1].lower()
-                canonical_ext = FileMatcherEngine._FORMAT_TO_EXT.get(real_fmt)
-                if canonical_ext and current_ext != canonical_ext:
-                    self.log(f"[压缩] 跳过后缀不一致的图片: {f}")
-                    continue
-            files.append(f)
+            if not os.path.getsize(path):
+                self.log(f"[压缩] 跳过 0 字节文件: {name}")
+                continue
+            real_fmt, _ = self.detect_real_format(path)
+            canonical_ext = self._FORMAT_TO_EXT.get(real_fmt)
+            if canonical_ext and os.path.splitext(name)[1].lower() != canonical_ext:
+                self.log(f"[压缩] 跳过后缀不一致的图片: {name}")
+                continue
+            files.append(name)
 
         if not files:
-            self.log("[压缩] 没有有效文件需要打包")
-            return
+            self.log("[压缩] 本次没有新文件需要打包")
+            return None
 
         archive_dir = dst_dir + "_压缩包"
         os.makedirs(archive_dir, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".打包中-", dir=archive_dir) as staging:
+            output = os.path.join(staging, "volumes")
+            os.mkdir(output)
+            zip_index = 1
+            zip_path = os.path.join(output, f"output_{zip_index}.zip")
+            current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
+            try:
+                for i, filename in enumerate(files):
+                    if self.stop_event.is_set():
+                        self.log("[压缩] 已停止打包，未发布本次压缩包")
+                        return None
+                    filepath = os.path.join(dst_dir, filename)
+                    file_size = os.path.getsize(filepath)
+                    if file_size > max_zip_size:
+                        self.log(f"[压缩] 警告: {filename} ({file_size / 1000000:.1f}MB) 超过单包限制")
 
-        zip_index = 1
-        zip_path = os.path.join(archive_dir, f"output_{zip_index}.zip")
-        current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
-        total = len(files)
+                    actual_size = current_zip.fp.tell()
+                    if actual_size > 0 and actual_size + file_size > max_zip_size:
+                        current_zip.close()
+                        zip_index += 1
+                        zip_path = os.path.join(output, f"output_{zip_index}.zip")
+                        current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
+                    current_zip.write(filepath, filename)
+                    if (i + 1) % 50 == 0 or i + 1 == len(files):
+                        self.log(f"[压缩] 进度: {i + 1}/{len(files)}")
+            finally:
+                current_zip.close()
 
-        aborted = False
-        try:
-            for i, filename in enumerate(sorted(files)):
-                if self.stop_event.is_set():
-                    aborted = True
-                    self.log("[压缩] 用户中止，正在清理...")
-                    break
-
-                filepath = os.path.join(dst_dir, filename)
-                file_size = os.path.getsize(filepath)
-
-                # 单个文件超过大小限制时输出警告
-                if file_size > max_zip_size:
-                    self.log(f"[压缩] 警告: {filename} ({file_size / 1000000:.1f}MB) 超过单包限制，压缩包大小将超出预期")
-
-                # 基于 zip 文件实际已写入大小判断是否需要分卷
-                actual_size = os.path.getsize(zip_path) if os.path.exists(zip_path) else 0
-                if actual_size > 0 and actual_size + file_size > max_zip_size:
-                    current_zip.close()
-                    self.log(f"[压缩] 已生成: {os.path.basename(zip_path)}")
-                    zip_index += 1
-                    zip_path = os.path.join(archive_dir, f"output_{zip_index}.zip")
-                    current_zip = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
-
-                current_zip.write(filepath, filename)
-
-                # 每 50 个文件输出一次进度
-                if (i + 1) % 50 == 0 or i + 1 == total:
-                    self.log(f"[压缩] 进度: {i + 1}/{total}")
-        finally:
-            current_zip.close()
-            if aborted:
-                # 删除当前未完成的压缩包
-                try:
-                    os.remove(zip_path)
-                except OSError:
-                    pass
-                self.log("[压缩] 已停止打包，已清理未完成的压缩包")
-                return
-
-        self.log(f"[压缩] 已生成: {os.path.basename(zip_path)}")
-        self.log(f"[压缩] 共生成 {zip_index} 个压缩包，保存在: {archive_dir}")
+            if self.stop_event.is_set():
+                self.log("[压缩] 已停止打包，未发布本次压缩包")
+                return None
+            run_name = datetime.now().strftime("任务_%Y%m%d_%H%M%S_%f") + "_" + os.path.basename(staging).split("-", 1)[-1]
+            run_dir = os.path.join(archive_dir, run_name)
+            os.rename(output, run_dir)
+        self.log(f"[压缩] 共生成 {zip_index} 个压缩包，保存在: {run_dir}")
+        return run_dir
 
     # ---- 主处理流程 ----
 
@@ -520,7 +504,7 @@ class FileMatcherEngine:
         filename = os.path.basename(dst_path)
         if os.path.getsize(src_path) == 0:
             self.log(f"[错误] 0 字节文件，已跳过: {filename}")
-            return 'error'
+            return 'error', None
 
         dst_dir = os.path.dirname(dst_path)
         with tempfile.TemporaryDirectory(prefix='.matcher-', dir=dst_dir) as stage_dir:
@@ -528,23 +512,23 @@ class FileMatcherEngine:
             shutil.copy2(src_path, staged)
             staged, norm_status, real_fmt = self.normalize_image_file(staged)
             if norm_status == 'zero_byte':
-                return 'error'
+                return 'error', None
 
             if enable_convert and real_fmt:
                 normalized = staged
                 staged = self.convert_image_format(staged, target_format)
                 if (staged == normalized and real_fmt not in ('JPEG', 'PNG')
                         and target_format in ('JPEG', 'PNG')):
-                    return 'error'
+                    return 'error', None
                 real_fmt, _ = self.detect_real_format(staged)
 
             if (enable_resize and real_fmt in ('JPEG', 'PNG', 'WEBP')
                     and not self.process_image(staged, max_width, max_height, max_size)):
-                return 'error'
+                return 'error', None
             if not os.path.isfile(staged) or os.path.getsize(staged) == 0:
                 raise OSError("待发布文件不存在或为空")
             if self.stop_event.is_set():
-                return 'stopped'
+                return 'stopped', None
 
             final_path = os.path.join(dst_dir, os.path.basename(staged))
             same_name = os.path.normcase(final_path) == os.path.normcase(dst_path)
@@ -552,7 +536,7 @@ class FileMatcherEngine:
             if old_destination:
                 if not overwrite:
                     self.log(f"[跳过] 目标已存在: {filename}")
-                    return 'skipped'
+                    return 'skipped', None
                 if not os.path.isfile(dst_path):
                     raise OSError("目标路径不是文件，无法覆盖")
 
@@ -568,7 +552,7 @@ class FileMatcherEngine:
             if not same_name and old_destination:
                 # 新文件已落盘后，才清理旧后缀的目标文件。
                 os.remove(dst_path)
-        return 'ok'
+        return 'ok', os.path.basename(final_path)
 
     def run(self, excel_path, column, src_dir, dst_dir, extensions,
             recursive=False, move_mode=False, overwrite=False,
@@ -597,7 +581,8 @@ class FileMatcherEngine:
         self.log(f"共读取到 {len(ids)} 个唯一编号。")
 
         self.log("正在匹配文件...")
-        matched = self.match_files(src_dir, ids, extensions, recursive)
+        matched = self.match_files(src_dir, ids, extensions, recursive,
+                                   (dst_dir, os.path.normpath(dst_dir) + "_压缩包"))
         if self.stop_event.is_set():
             return 0, 0, 0, []
 
@@ -626,6 +611,7 @@ class FileMatcherEngine:
         skipped = 0
         errors = 0
         processed = 0
+        published = set()
 
         for _, files in matched.items():
             for src_path in files:
@@ -642,10 +628,11 @@ class FileMatcherEngine:
                         self.log(f"[跳过] 目标已存在或与源文件相同: {filename}")
                         skipped += 1
                     else:
-                        result = self._stage_and_publish(
+                        result, output_name = self._stage_and_publish(
                             src_path, dst_path, overwrite, enable_convert, target_format,
                             enable_resize, max_width, max_height, max_size)
                         if result == 'ok':
+                            published.add(output_name)
                             if move_mode:
                                 os.remove(src_path)
                                 self.log(f"[移动] {filename}")
@@ -667,9 +654,13 @@ class FileMatcherEngine:
                 self._update_progress(processed, total_files)
 
         # 压缩打包
-        if enable_zip and not self.stop_event.is_set() and (success > 0 or skipped > 0):
+        if enable_zip and not self.stop_event.is_set():
             self.log("正在压缩打包...")
-            self.create_zip_archives(dst_dir, zip_max_size)
+            try:
+                self.create_zip_archives(dst_dir, zip_max_size, published)
+            except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
+                self.log(f"[错误] 打包失败，未发布本次压缩包: {exc}")
+                errors += 1
 
         self.log(f"操作完成：成功 {success}，跳过 {skipped}，错误 {errors}")
         return success, skipped, errors, unmatched

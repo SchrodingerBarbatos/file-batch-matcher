@@ -251,9 +251,7 @@ class TestZipFiltering:
         with open(os.path.join(tmp_dir, "empty.bin"), 'wb'):
             pass  # 0 bytes
 
-        engine.create_zip_archives(tmp_dir, max_zip_size=10_000_000)
-
-        archive_dir = tmp_dir + "_压缩包"
+        archive_dir = engine.create_zip_archives(tmp_dir, 10_000_000, os.listdir(tmp_dir))
         assert os.path.isdir(archive_dir)
         zips = [f for f in os.listdir(archive_dir) if f.endswith('.zip')]
         assert len(zips) == 1
@@ -270,9 +268,7 @@ class TestZipFiltering:
         fake = os.path.join(tmp_dir, "fake.jpg")
         _save_png(fake)  # PNG 内容，.jpg 后缀
 
-        engine.create_zip_archives(tmp_dir, max_zip_size=10_000_000)
-
-        archive_dir = tmp_dir + "_压缩包"
+        archive_dir = engine.create_zip_archives(tmp_dir, 10_000_000, os.listdir(tmp_dir))
         zips = [f for f in os.listdir(archive_dir) if f.endswith('.zip')]
         with zipfile.ZipFile(os.path.join(archive_dir, zips[0])) as zf:
             names = zf.namelist()
@@ -286,9 +282,7 @@ class TestZipFiltering:
         with open(os.path.join(tmp_dir, "data.csv"), 'w') as f:
             f.write("a,b,c")
 
-        engine.create_zip_archives(tmp_dir, max_zip_size=10_000_000)
-
-        archive_dir = tmp_dir + "_压缩包"
+        archive_dir = engine.create_zip_archives(tmp_dir, 10_000_000, os.listdir(tmp_dir))
         zips = [f for f in os.listdir(archive_dir) if f.endswith('.zip')]
         with zipfile.ZipFile(os.path.join(archive_dir, zips[0])) as zf:
             names = zf.namelist()

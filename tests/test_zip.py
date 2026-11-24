@@ -40,9 +40,7 @@ class TestCreateZipArchives:
     def test_single_zip_no_split(self, engine, tmp_dir):
         """文件总大小未超过限制时，只生成一个压缩包。"""
         _create_files(tmp_dir, [("a.txt", 100), ("b.txt", 200)])
-        engine.create_zip_archives(tmp_dir, max_zip_size=10000)
-
-        archive_dir = tmp_dir + "_压缩包"
+        archive_dir = engine.create_zip_archives(tmp_dir, 10000, os.listdir(tmp_dir))
         assert os.path.isdir(archive_dir)
         zips = [f for f in os.listdir(archive_dir) if f.endswith('.zip')]
         assert len(zips) == 1
@@ -55,9 +53,7 @@ class TestCreateZipArchives:
         """文件超过大小限制时，自动分卷。"""
         # 创建两个 600 字节的文件，限制 1000 字节
         _create_files(tmp_dir, [("a.bin", 600), ("b.bin", 600)])
-        engine.create_zip_archives(tmp_dir, max_zip_size=1000)
-
-        archive_dir = tmp_dir + "_压缩包"
+        archive_dir = engine.create_zip_archives(tmp_dir, 1000, os.listdir(tmp_dir))
         zips = sorted(f for f in os.listdir(archive_dir) if f.endswith('.zip'))
         assert len(zips) >= 2
 
@@ -70,8 +66,8 @@ class TestCreateZipArchives:
 
     def test_empty_directory(self, engine, tmp_dir):
         """空目录应输出提示信息，不创建压缩包。"""
-        engine.create_zip_archives(tmp_dir, max_zip_size=10000)
-        assert any("没有文件" in log for log in engine._logs)
+        engine.create_zip_archives(tmp_dir, 10000, [])
+        assert any("没有新文件" in log for log in engine._logs)
         archive_dir = tmp_dir + "_压缩包"
         assert not os.path.exists(archive_dir)
 
@@ -83,27 +79,24 @@ class TestCreateZipArchives:
 
         # 在压缩开始前设置 stop_event
         engine.stop_event.set()
-        engine.create_zip_archives(tmp_dir, max_zip_size=100000)
-
-        archive_dir = tmp_dir + "_压缩包"
+        archive_dir = engine.create_zip_archives(tmp_dir, 100000, os.listdir(tmp_dir))
         # 应该已清理不完整的压缩包
-        if os.path.exists(archive_dir):
-            zips = [f for f in os.listdir(archive_dir) if f.endswith('.zip')]
-            assert len(zips) == 0
+        assert archive_dir is None
+        assert not os.listdir(tmp_dir + "_压缩包")
         # 日志应提示已停止
         assert any("已停止" in log for log in engine._logs)
 
     def test_large_file_warning(self, engine, tmp_dir):
         """单个文件超过限制时应输出警告。"""
         _create_files(tmp_dir, [("huge.bin", 2000)])
-        engine.create_zip_archives(tmp_dir, max_zip_size=1000)
+        engine.create_zip_archives(tmp_dir, 1000, os.listdir(tmp_dir))
         assert any("警告" in log and "huge.bin" in log for log in engine._logs)
 
     def test_progress_output(self, engine, tmp_dir):
         """文件数量 >= 50 时应输出进度。"""
         files = [(f"f{i}.bin", 10) for i in range(55)]
         _create_files(tmp_dir, files)
-        engine.create_zip_archives(tmp_dir, max_zip_size=100000000)
+        engine.create_zip_archives(tmp_dir, 100000000, os.listdir(tmp_dir))
 
         progress_logs = [l for l in engine._logs if "进度" in l]
         assert len(progress_logs) >= 1
